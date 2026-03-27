@@ -1,3 +1,4 @@
 export { FixedWindow } from "./core/fixedWindow.js";
-export { MemoryStore } from "./storage/memoryStore.js";
-export type { Storage, FixedWindowState, RateLimitResult } from "./types.js";
+export { SlidingWindow } from "./core/slidingWindow.js";
+export { MemoryStore, SlidingWindowMemoryStore } from "./storage/memoryStore.js";
+export type { Storage, FixedWindowState, RateLimitResult, SlidingWindowStorage, SlidingWindowState } from "./types.js";

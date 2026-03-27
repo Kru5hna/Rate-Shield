@@ -14,5 +14,16 @@ export interface Storage {
    get(key: string): FixedWindowState  | null;
    set(key: string, value: FixedWindowState) : void;
    delete(key: string) : void;
-   
+
+}
+
+// Sliding window
+export interface SlidingWindowState {
+   timestamps: number[],
+}
+
+export interface SlidingWindowStorage {
+   get(key: string) : SlidingWindowState | null;
+   set(key: string, value: SlidingWindowState) : void;
+   delete(key: string) : void;
 }
