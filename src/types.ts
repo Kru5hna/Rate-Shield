@@ -27,3 +27,15 @@ export interface SlidingWindowStorage {
    set(key: string, value: SlidingWindowState) : void;
    delete(key: string) : void;
 }
+
+// Token Bucket...
+export interface TokenBucketState {
+   tokens: number,
+   lastRefillTime: number,
+}
+
+export interface TokenBucketStorage {
+   get(key: string) : TokenBucketState | null;
+   set(key: string, value: TokenBucketState) : void;
+   delete(key: string) : void;
+}

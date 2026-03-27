@@ -1,4 +1,4 @@
-import type { FixedWindowState, SlidingWindowState, SlidingWindowStorage, Storage } from "../types.js";
+import type { FixedWindowState, SlidingWindowState, SlidingWindowStorage, Storage, TokenBucketState, TokenBucketStorage } from "../types.js";
 
 export class MemoryStore implements Storage {
   private store: Map<string, FixedWindowState> = new Map();
@@ -25,5 +25,21 @@ export class SlidingWindowMemoryStore implements SlidingWindowStorage {
   }
   delete(key: string) {
     this.store.delete(key);
+  }
+}
+
+export class TokenBucketMemoryStore implements TokenBucketStorage {
+  private store: Map<string, TokenBucketState> = new Map();
+
+  get(key: string) {
+    return this.store.get(key) ?? null;
+  }
+
+  set(key: string, value: TokenBucketState) {
+    return this.store.set(key, value);
+  }
+
+  delete(key: string) {
+    return this.store.delete(key);
   }
 }
