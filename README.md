@@ -63,11 +63,11 @@ src/
 
 The design is intentionally modular:
 
-| Layer | Responsibility |
-|-------|---------------|
-| **Types** | Contracts — what data looks like |
-| **Storage** | Persistence — where state is saved (`Map` now, Redis later) |
-| **Algorithm** | Logic — the allow/block decision |
+| Layer         | Responsibility                                              |
+| ------------- | ----------------------------------------------------------- |
+| **Types**     | Contracts — what data looks like                            |
+| **Storage**   | Persistence — where state is saved (`Map` now, Redis later) |
+| **Algorithm** | Logic — the allow/block decision                            |
 
 ## ⚡ Quick Start
 
@@ -98,11 +98,11 @@ if (result.allowed) {
 new FixedWindow(limit: number, windowMs: number, storage: Storage)
 ```
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `limit` | `number` | Max requests per window |
-| `windowMs` | `number` | Window duration in milliseconds |
-| `storage` | `Storage` | Storage backend (e.g., `MemoryStore`) |
+| Param      | Type      | Description                           |
+| ---------- | --------- | ------------------------------------- |
+| `limit`    | `number`  | Max requests per window               |
+| `windowMs` | `number`  | Window duration in milliseconds       |
+| `storage`  | `Storage` | Storage backend (e.g., `MemoryStore`) |
 
 #### `.consume(key: string): RateLimitResult`
 
@@ -110,17 +110,17 @@ Checks if a request from the given key should be allowed.
 
 ```typescript
 interface RateLimitResult {
-  allowed: boolean;       // allow or block?
-  remaining: number;      // requests left in this window
-  retryAfterMs: number;   // ms to wait (0 if allowed)
-  limit: number;          // the configured max
+  allowed: boolean; // allow or block?
+  remaining: number; // requests left in this window
+  retryAfterMs: number; // ms to wait (0 if allowed)
+  limit: number; // the configured max
 }
 ```
 
 ### `MemoryStore`
 
 ```typescript
-new MemoryStore()
+new MemoryStore();
 ```
 
 In-memory storage using a `Map`. Implements the `Storage` interface:
@@ -145,9 +145,25 @@ interface Storage {
 - [ ] **Redis Store** — distributed rate limiting across servers
 - [ ] **Analytics** — request metrics & dashboard
 
-## 🧠 How Fixed Window Works
+## 🧠 Algorithm Deep Dive
 
-Time is divided into fixed-size windows. Each key gets a counter that resets when the window expires.
+Each algorithm solves a flaw in the previous one:
+
+```
+Fixed Window ──► has boundary burst problem
+      │
+Sliding Window ──► fixes it by tracking individual timestamps
+      │
+Token Bucket ──► smoother, allows controlled bursts (coming next)
+      │
+Leaky Bucket ──► constant drain rate, like a queue (coming next)
+```
+
+---
+
+### 1. Fixed Window ✅
+
+Divides time into fixed windows. Counter resets when window expires.
 
 ```
 Window: 12:00 – 12:59  (limit: 5)
@@ -157,12 +173,72 @@ Window: 12:00 – 12:59  (limit: 5)
   12:30 → req #3  ✅ remaining: 2
   12:45 → req #4  ✅ remaining: 1
   12:50 → req #5  ✅ remaining: 0
-  12:55 → req #6  ❌ BLOCKED (retry after 5s)
+  12:55 → req #6  ❌ BLOCKED
 
 Window: 1:00 – 1:59  ← counter resets!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  1:05  → req #1  ✅ remaining: 4 (fresh window)
+  1:05  → req #1  ✅ remaining: 4 (fresh!)
 ```
+
+#### ⚠️ The Boundary Burst Problem
+
+**Double the traffic can pass at window edges:**
+
+```
+Limit: 5 req/min
+
+Window 1 (12:00–12:59)       Window 2 (1:00–1:59)
+━━━━━━━━━━━━━━━━━━━━━        ━━━━━━━━━━━━━━━━━━━━
+  12:55 → req #1 ✅           1:00 → req #1 ✅
+  12:56 → req #2 ✅           1:01 → req #2 ✅
+  12:57 → req #3 ✅           1:02 → req #3 ✅
+  12:58 → req #4 ✅           1:03 → req #4 ✅
+  12:59 → req #5 ✅           1:04 → req #5 ✅
+
+= 10 requests in ~10 seconds! (limit was 5/min) 😱
+```
+
+Counter resets exactly at the boundary → user exploits the gap.
+
+---
+
+### 2. Sliding Window 🔜
+
+Instead of a counter, **store the timestamp of every request** and count how many fall within the last `windowMs` from *right now*.
+
+```
+Limit: 5 req per 60 seconds
+Current time: 1:02:30
+
+Stored timestamps for "192.168.1.1":
+  [ 1:01:50, 1:01:55, 1:02:00, 1:02:10, 1:02:20 ]
+
+Sliding window = last 60s = 1:01:30 → 1:02:30
+  1:01:50 ✅ inside
+  1:01:55 ✅ inside
+  1:02:00 ✅ inside
+  1:02:10 ✅ inside
+  1:02:20 ✅ inside
+Count = 5 → ❌ BLOCKED
+
+Later at 1:02:51 →
+  1:01:50 slides OUT (older than 60s)
+  Count = 4 → ✅ ALLOWED
+```
+
+**No boundary burst!** Window moves with time, not fixed to clock edges.
+
+#### Fixed Window vs Sliding Window
+
+| | Fixed Window | Sliding Window |
+|---|---|---|
+| **Stores** | `{ count, windowStart }` | `[ timestamp, timestamp, ... ]` |
+| **Resets** | At boundary | Never — old timestamps slide out |
+| **Boundary burst** | ⚠️ 2x traffic possible | ✅ No |
+| **Memory** | Low (2 numbers/key) | Higher (1 timestamp/request) |
+| **Use when** | Simplicity is enough | Accuracy matters |
+
+
 
 ## 🛠️ Development
 
