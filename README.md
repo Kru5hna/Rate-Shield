@@ -1,0 +1,188 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/⚡-Rate_Shield-blueviolet?style=for-the-badge&logoColor=white" alt="Rate Shield" />
+</p>
+
+<h1 align="center">Rate Shield</h1>
+
+<p align="center">
+  <strong>A lightweight, pluggable rate limiter for Node.js — built from scratch.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white" />
+  <img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white" />
+  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" />
+  <img src="https://img.shields.io/badge/Status-In_Development-orange?style=flat-square" />
+</p>
+
+<p align="center">
+  <code>npm install rate-shield</code>
+</p>
+
+---
+
+## 🤔 What is this?
+
+A system that answers one question: **"Should I allow or block this request?"**
+
+Rate Shield protects your APIs from abuse by limiting how many requests a client can make in a given time window. It's built with clean architecture, fully typed in TypeScript, and designed to be extended with multiple algorithms.
+
+```
+  Request → "192.168.1.1"
+      │
+      ▼
+  Do I know this IP? ──No──► Save count=1, ALLOW ✅
+      │
+     Yes
+      │
+      ▼
+  Has their window expired? ──Yes──► Reset count=1, ALLOW ✅
+      │
+      No
+      │
+      ▼
+  Are they over the limit? ──Yes──► BLOCK ❌
+      │
+      No
+      │
+      ▼
+  Increment count, ALLOW ✅
+```
+
+## 🏗️ Architecture
+
+```
+src/
+├── types.ts              ← Interfaces (RateLimitResult, FixedWindowState, Storage)
+├── storage/
+│   └── memoryStore.ts    ← In-memory Map-based store (pluggable)
+├── core/
+│   └── fixedWindow.ts    ← Fixed Window algorithm
+└── index.ts              ← Barrel exports
+```
+
+The design is intentionally modular:
+
+| Layer | Responsibility |
+|-------|---------------|
+| **Types** | Contracts — what data looks like |
+| **Storage** | Persistence — where state is saved (`Map` now, Redis later) |
+| **Algorithm** | Logic — the allow/block decision |
+
+## ⚡ Quick Start
+
+```typescript
+import { FixedWindow, MemoryStore } from "rate-shield";
+
+// Create a store (in-memory)
+const store = new MemoryStore();
+
+// Create a limiter: 5 requests per 10 seconds
+const limiter = new FixedWindow(5, 10_000, store);
+
+// Check if a request should be allowed
+const result = limiter.consume("192.168.1.1");
+
+if (result.allowed) {
+  console.log(`✅ Allowed — ${result.remaining} requests remaining`);
+} else {
+  console.log(`❌ Blocked — retry after ${result.retryAfterMs}ms`);
+}
+```
+
+## 📦 API Reference
+
+### `FixedWindow`
+
+```typescript
+new FixedWindow(limit: number, windowMs: number, storage: Storage)
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `limit` | `number` | Max requests per window |
+| `windowMs` | `number` | Window duration in milliseconds |
+| `storage` | `Storage` | Storage backend (e.g., `MemoryStore`) |
+
+#### `.consume(key: string): RateLimitResult`
+
+Checks if a request from the given key should be allowed.
+
+```typescript
+interface RateLimitResult {
+  allowed: boolean;       // allow or block?
+  remaining: number;      // requests left in this window
+  retryAfterMs: number;   // ms to wait (0 if allowed)
+  limit: number;          // the configured max
+}
+```
+
+### `MemoryStore`
+
+```typescript
+new MemoryStore()
+```
+
+In-memory storage using a `Map`. Implements the `Storage` interface:
+
+```typescript
+interface Storage {
+  get(key: string): FixedWindowState | null;
+  set(key: string, value: FixedWindowState): void;
+  delete(key: string): void;
+}
+```
+
+> 💡 You can create your own store (e.g., Redis) by implementing this interface.
+
+## 🗺️ Roadmap
+
+- [x] **Fixed Window** — simple counting per time window
+- [ ] **Token Bucket** — smooth rate limiting with token refill
+- [ ] **Sliding Window** — weighted window for smoother edges
+- [ ] **Leaky Bucket** — constant drain rate queue
+- [ ] **Express Middleware** — drop-in `app.use(rateLimit({...}))`
+- [ ] **Redis Store** — distributed rate limiting across servers
+- [ ] **Analytics** — request metrics & dashboard
+
+## 🧠 How Fixed Window Works
+
+Time is divided into fixed-size windows. Each key gets a counter that resets when the window expires.
+
+```
+Window: 12:00 – 12:59  (limit: 5)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  12:05 → req #1  ✅ remaining: 4
+  12:10 → req #2  ✅ remaining: 3
+  12:30 → req #3  ✅ remaining: 2
+  12:45 → req #4  ✅ remaining: 1
+  12:50 → req #5  ✅ remaining: 0
+  12:55 → req #6  ❌ BLOCKED (retry after 5s)
+
+Window: 1:00 – 1:59  ← counter resets!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1:05  → req #1  ✅ remaining: 4 (fresh window)
+```
+
+## 🛠️ Development
+
+```bash
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run dev
+
+# Build for production
+npm run build
+```
+
+## 📄 License
+
+MIT © [Kru5hna](https://github.com/Kru5hna)
+
+---
+
+<p align="center">
+  <sub>Built with 💜 as a learning project — understanding rate limiting from the ground up.</sub>
+</p>
