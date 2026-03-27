@@ -1,50 +1,65 @@
-// consume logic for token bucket algorithm ....
+import type { RateLimitResult } from "../types";
 
-const tokenBucket = TokenBucket({
-   capacity,
-   refillRate,
-   key,
-   storage,
-   nowFn: Date.now(),
-})
-// A - read stateee
-const consume = async (tokens = 1) => {
-   const storage = await Storage.get(tokenBucket.key); // import Storage
-   if(!storage) {
-      return {
-         token: tokenBucket.capacity,
-         lastRefill: tokenBucket.nowFn,
+export class FixedWindow {
+   constructor(
+      private limit: number,
+      private windowMs: number,
+      private storage: Storage
+   ) {}
+
+   consume(key: string): RateLimitResult {
+      const now = Date.now();
+      const state = this.storage.get(key);
+
+      if(!state) {
+         this.storage.set(key, {
+            count: 1,
+            windowStart: now,
+         });
+
+         return {
+            allowed: true,
+            remaining: this.limit -1,
+            retryAfterMs: 0,
+            limit: this.limit,
+         }
       }
 
-   }
-// B - compute refill
-   let now = tokenBucket.nowFn();
-   let elapsed = now - lastRefill < 0 ? 0 : now - lastRefill;
-   let refill = elapsed * refillRate;
-   let newTokens = min(capacity, tokens + refill);
-   lastRefill = now;
+      const elapsed = now -state.windowStart;
 
-   // C - Now decide to allow or block
-   if (newTokens >= tokens) {
-      newTokens -= tokens;
-      tokens = newTokens;
-      lastRefill = now;
+      if(elapsed >= this.windowMs) {
+         this.storage.set(key, {
+            count: 1,
+            windowStart: now,
+         });
+
+         return {
+            allowed: true,
+            remaining: this.limit -1,
+            retryAfterMs: 0,
+            limit: this.limit,
+         }
+      }
+
+      const newCount = state.count +1;
+      if(newCount > this.limit) {
+         return {
+            allowed: false,
+            remaining: 0,
+            retryAfterMs: this.windowMs - elapsed,
+            limit: this.limit,
+         }
+      }
+      this.storage.set(key, {
+         count: newCount, windowStart: state.windowStart
+      });
 
       return {
          allowed: true,
-         remaining: Math.floor(newTokens),
+         remaining: this.limit - newCount,
          retryAfterMs: 0,
-      }
-   } else {
-      let needed = tokens - newTokens;
-      let retryAfterMs = Math.ceil(needed / refillRate);
-      lastRefill = now;
-
-      return {
-         allowed: false,
-         remaining: Math.floor(newTokens),
-         retryAfterMs
+         limit: this.limit,
       }
    }
-}
 
+}
