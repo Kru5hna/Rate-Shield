@@ -10,21 +10,19 @@ export interface RateLimitOptions {
 }
 
 export function rateLimit(opts: RateLimitOptions) {
-   // const limiter = new TokenBucket(opts.tokens, opts.refillRate, opts.capacity, opts.storage);
+   return (req: any, res: any, next: any) => {
+      // Generate the key (default to IP)
+      const key = opts.keyGenerator ? opts.keyGenerator(req) : req.ip;
 
-   const key = opts.keyGenerator ? opts.keyGenerator(req) : req.ip;
+      // Consume using the provided limiter
+      const result = opts.limiter.consume(key);
 
-
-   return (req: any, res:any, next:any) => {
-      const key = req.ip;
-      const result = limiter.consume(key);
-
-      if(result.allowed) {
+      if (result.allowed) {
          res.set("X-RateLimit-Limit", result.limit);
          res.set("X-RateLimit-Remaining", result.remaining);
          next();
       } else {
-        res.status(opts.statusCode || 429).set({
+         res.status(opts.statusCode || 429).set({
             "X-RateLimit-Limit": result.limit,
             "X-RateLimit-Remaining": 0,
             "Retry-After": Math.ceil(result.retryAfterMs / 1000),
