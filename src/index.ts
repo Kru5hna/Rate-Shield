@@ -21,3 +21,10 @@ export type {
 } from "./types.js";
 
 export { rateLimit } from "./middleware/express.js";
+
+export {
+  FixedWindowRedisStore,
+  SlidingWindowRedisStore,
+  TokenBucketRedisStore,
+  LeakyBucketRedisStore,
+} from "./storage/redisStore.js";
