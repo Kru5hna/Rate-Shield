@@ -11,10 +11,9 @@ export interface FixedWindowState  {
 }
 
 export interface Storage {
-   get(key: string): FixedWindowState  | null;
-   set(key: string, value: FixedWindowState) : void;
-   delete(key: string) : void;
-
+   get(key: string): Promise<FixedWindowState | null>;
+   set(key: string, value: FixedWindowState) : Promise<void>;
+   delete(key: string) : Promise<void>;
 }
 
 // Sliding window
@@ -23,9 +22,9 @@ export interface SlidingWindowState {
 }
 
 export interface SlidingWindowStorage {
-   get(key: string) : SlidingWindowState | null;
-   set(key: string, value: SlidingWindowState) : void;
-   delete(key: string) : void;
+   get(key: string) : Promise<SlidingWindowState | null>;
+   set(key: string, value: SlidingWindowState) : Promise<void>;
+   delete(key: string) : Promise<void>;
 }
 
 // Token Bucket...
@@ -35,9 +34,9 @@ export interface TokenBucketState {
 }
 
 export interface TokenBucketStorage {
-   get(key: string) : TokenBucketState | null;
-   set(key: string, value: TokenBucketState) : void;
-   delete(key: string) : void;
+   get(key: string) : Promise<TokenBucketState | null>;
+   set(key: string, value: TokenBucketState) : Promise<void>;
+   delete(key: string) : Promise<void>;
 }
 
 // Leaky Buckettttt
@@ -48,11 +47,11 @@ export interface LeakyBucketState {
 }
 
 export interface LeakyBucketStorage {
-   get(key: string) : LeakyBucketState | null;
-   set(key: string, value: LeakyBucketState): void;
-   delete(key: string) : void;
+   get(key: string) : Promise<LeakyBucketState | null>;
+   set(key: string, value: LeakyBucketState): Promise<void>;
+   delete(key: string) : Promise<void>;
 }
 
 export interface RateLimiter {
-   consume(key: string) : RateLimitResult;
+   consume(key: string, amount?: number) : Promise<RateLimitResult>;
 }

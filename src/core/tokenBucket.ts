@@ -8,8 +8,8 @@ export class TokenBucket {
       private storage: TokenBucketStorage
    ) {}
 
-   consume(key: string, amount: number = 1): RateLimitResult {
-      const state = this.storage.get(key);
+   async consume(key: string, amount: number = 1): Promise<RateLimitResult> {
+      const state = await this.storage.get(key);
       const now = Date.now();
       let currentTokens = state?.tokens ?? this.capacity;
       let lastRefillTime = state?.lastRefillTime ?? now;
@@ -32,7 +32,7 @@ export class TokenBucket {
          }
       }
       currentTokens -= amount;
-      this.storage.set(key, {tokens: currentTokens, lastRefillTime: now});
+      await this.storage.set(key, {tokens: currentTokens, lastRefillTime: now});
 
 
       

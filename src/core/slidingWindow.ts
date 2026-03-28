@@ -7,11 +7,11 @@ export class SlidingWindow {
       private storage: SlidingWindowStorage
    ) {}
 
-   consume(key: string): RateLimitResult {
+   async consume(key: string): Promise<RateLimitResult> {
       const now = Date.now();
       const windowStart = now - this.windowMs;
 
-    const state = this.storage.get(key);
+    const state = await this.storage.get(key);
     const timestamps = state?.timestamps || [];
     const validTimestamps = timestamps.filter((ts) => ts >= windowStart);
 
@@ -28,7 +28,7 @@ export class SlidingWindow {
     }
 
     const newTimestamps = [... validTimestamps, now];
-    this.storage.set(key, { timestamps: newTimestamps });
+    await this.storage.set(key, { timestamps: newTimestamps });
 
     return {
       allowed: true,

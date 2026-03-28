@@ -11,9 +11,9 @@ export class LeakyBucket {
       this.storage = storage;
    }
 
-   consume(key: string, amount: number=1) : RateLimitResult {
+   async consume(key: string, amount: number=1) : Promise<RateLimitResult> {
       const now = Date.now();
-      const state = this.storage.get(key);
+      const state = await this.storage.get(key);
       
       let waterLevel = state?.waterLevel ??  0;
       let lastLeakTime = state?.lastLeakTime ?? now;
@@ -35,7 +35,7 @@ export class LeakyBucket {
          }
       }
       waterLevel += amount;
-      this.storage.set(key, {waterLevel, lastLeakTime: now});
+      await this.storage.set(key, {waterLevel, lastLeakTime: now});
 
       return {
          allowed: true,

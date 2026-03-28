@@ -7,12 +7,12 @@ export class FixedWindow {
     private storage: Storage,
   ) {}
 
-  consume(key: string): RateLimitResult {
+  async consume(key: string): Promise<RateLimitResult> {
     const now = Date.now();
-    const state = this.storage.get(key);
+    const state = await this.storage.get(key);
 
     if (!state) {
-      this.storage.set(key, {
+      await this.storage.set(key, {
         count: 1,
         windowStart: now,
       });
@@ -28,7 +28,7 @@ export class FixedWindow {
     const elapsed = now - state.windowStart;
 
     if (elapsed >= this.windowMs) {
-      this.storage.set(key, {
+      await this.storage.set(key, {
         count: 1,
         windowStart: now,
       });
@@ -50,7 +50,7 @@ export class FixedWindow {
         limit: this.limit,
       };
     }
-    this.storage.set(key, {
+    await this.storage.set(key, {
       count: newCount,
       windowStart: state.windowStart,
     });
