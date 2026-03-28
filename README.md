@@ -59,7 +59,8 @@ src/
 ├── core/
 │   ├── fixedWindow.ts    ← Fixed Window algorithm
 │   ├── slidingWindow.ts  ← Sliding Window algorithm
-│   └── tokenBucket.ts    ← Token Bucket algorithm
+│   ├── tokenBucket.ts    ← Token Bucket algorithm
+│   └── leakyBucket.ts    ← Leaky Bucket algorithm
 └── index.ts              ← Barrel exports
 ```
 
@@ -142,7 +143,7 @@ interface Storage {
 - [x] **Fixed Window** — simple counting per time window
 - [x] **Sliding Window** — tracks individual timestamps, no boundary burst
 - [x] **Token Bucket** — smooth rate limiting with lazy token refill
-- [ ] **Leaky Bucket** — constant drain rate queue
+- [x] **Leaky Bucket** — constant drain rate, smooth output
 - [ ] **Express Middleware** — drop-in `app.use(rateLimit({...}))`
 - [ ] **Redis Store** — distributed rate limiting across servers
 - [ ] **Analytics** — request metrics & dashboard
@@ -158,7 +159,7 @@ Sliding Window ──► fixes it by tracking individual timestamps
       │
 Token Bucket ──► smoother, allows controlled bursts ✅
       │
-Leaky Bucket ──► constant drain rate, like a queue (coming next)
+Leaky Bucket ──► constant drain rate, like a queue ✅
 ```
 
 ---
@@ -282,6 +283,48 @@ const result = limiter.consume("user-123");
 | **Bursts** | Strictly blocked | Allows controlled bursts |
 | **Flexible cost** | ❌ 1 req = 1 count | ✅ Can consume N tokens |
 | **Use when** | Strict accuracy | APIs with varying request costs |
+
+---
+
+### 4. Leaky Bucket ✅
+
+Requests fill a bucket that **leaks at a constant rate**. If the bucket overflows, new requests are rejected. This enforces a **perfectly smooth** output rate.
+
+```
+Capacity: 5, Leak Rate: 2 req/sec
+
+t=0s    🪣 water=0 (empty)
+  req → 0+1=1 ≤ 5?  ✅  water=1
+  req → 1+1=2 ≤ 5?  ✅  water=2
+  req → 2+1=3 ≤ 5?  ✅  water=3
+  req → 3+1=4 ≤ 5?  ✅  water=4
+  req → 4+1=5 ≤ 5?  ✅  water=5
+  req → 5+1=6 > 5?  ❌  BLOCKED
+
+t=3s    leaked = 3s × 2 = 6, water = max(0, 5-6) = 0
+  req → 0+1=1 ≤ 5?  ✅  water=1
+```
+
+```typescript
+import { LeakyBucket, LeakyBucketMemoryStore } from "rate-shield";
+
+const store = new LeakyBucketMemoryStore();
+const limiter = new LeakyBucket(5, 2, store);
+// capacity=5, leakRate=2 req/sec
+
+const result = limiter.consume("user-123");
+```
+
+#### Token Bucket vs Leaky Bucket
+
+| | Token Bucket | Leaky Bucket |
+|---|---|---|
+| **Bucket starts** | Full (tokens) | Empty (no water) |
+| **Request** | Removes a token | Adds water |
+| **Over time** | Tokens refill | Water leaks out |
+| **Denied when** | Bucket empty | Bucket full |
+| **Bursts** | ✅ Allows controlled bursts | ❌ Strictly smooth output |
+| **Use when** | Flexible APIs | Need constant throughput |
 
 
 
