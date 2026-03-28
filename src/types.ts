@@ -39,3 +39,16 @@ export interface TokenBucketStorage {
    set(key: string, value: TokenBucketState) : void;
    delete(key: string) : void;
 }
+
+// Leaky Buckettttt
+
+export interface LeakyBucketState {
+   waterLevel: number,
+   lastLeakTime: number,
+}
+
+export interface LeakyBucketStorage {
+   get(key: string) : LeakyBucketState | null;
+   set(key: string, value: LeakyBucketState): void;
+   delete(key: string) : void;
+}
