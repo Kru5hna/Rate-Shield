@@ -53,11 +53,13 @@ Rate Shield protects your APIs from abuse by limiting how many requests a client
 
 ```
 src/
-├── types.ts              ← Interfaces (RateLimitResult, FixedWindowState, Storage)
+├── types.ts              ← Interfaces (RateLimitResult, State types, Storage contracts)
 ├── storage/
-│   └── memoryStore.ts    ← In-memory Map-based store (pluggable)
+│   └── memoryStore.ts    ← In-memory Map-based stores (pluggable)
 ├── core/
-│   └── fixedWindow.ts    ← Fixed Window algorithm
+│   ├── fixedWindow.ts    ← Fixed Window algorithm
+│   ├── slidingWindow.ts  ← Sliding Window algorithm
+│   └── tokenBucket.ts    ← Token Bucket algorithm
 └── index.ts              ← Barrel exports
 ```
 
@@ -138,8 +140,8 @@ interface Storage {
 ## 🗺️ Roadmap
 
 - [x] **Fixed Window** — simple counting per time window
-- [ ] **Token Bucket** — smooth rate limiting with token refill
-- [ ] **Sliding Window** — weighted window for smoother edges
+- [x] **Sliding Window** — tracks individual timestamps, no boundary burst
+- [x] **Token Bucket** — smooth rate limiting with lazy token refill
 - [ ] **Leaky Bucket** — constant drain rate queue
 - [ ] **Express Middleware** — drop-in `app.use(rateLimit({...}))`
 - [ ] **Redis Store** — distributed rate limiting across servers
@@ -154,7 +156,7 @@ Fixed Window ──► has boundary burst problem
       │
 Sliding Window ──► fixes it by tracking individual timestamps
       │
-Token Bucket ──► smoother, allows controlled bursts (coming next)
+Token Bucket ──► smoother, allows controlled bursts ✅
       │
 Leaky Bucket ──► constant drain rate, like a queue (coming next)
 ```
@@ -202,7 +204,7 @@ Counter resets exactly at the boundary → user exploits the gap.
 
 ---
 
-### 2. Sliding Window 🔜
+### 2. Sliding Window ✅
 
 Instead of a counter, **store the timestamp of every request** and count how many fall within the last `windowMs` from *right now*.
 
@@ -237,6 +239,49 @@ Later at 1:02:51 →
 | **Boundary burst** | ⚠️ 2x traffic possible | ✅ No |
 | **Memory** | Low (2 numbers/key) | Higher (1 timestamp/request) |
 | **Use when** | Simplicity is enough | Accuracy matters |
+
+---
+
+### 3. Token Bucket ✅
+
+A bucket holds tokens that **refill at a constant rate**. Each request consumes a token. If the bucket is empty, the request is denied. Tokens are refilled **lazily** — no timers needed.
+
+```
+Capacity: 5 tokens, Refill: 2 tokens/sec
+
+t=0s    🪣 [🟢🟢🟢🟢🟢]  bucket starts full
+  req → consume 1 → 4 left  ✅
+  req → consume 1 → 3 left  ✅
+  req → consume 1 → 2 left  ✅
+  req → consume 1 → 1 left  ✅
+  req → consume 1 → 0 left  ✅
+  req → 0 tokens   → ❌ BLOCKED (retry in 500ms)
+
+t=3s    refill: min(5, 0 + floor(3s × 2)) = 5 tokens
+  req → consume 1 → 4 left  ✅
+```
+
+**Key insight:** Tokens are calculated on-demand using elapsed time — no background timer.
+
+```typescript
+import { TokenBucket, TokenBucketMemoryStore } from "rate-shield";
+
+const store = new TokenBucketMemoryStore();
+const limiter = new TokenBucket(5, 2, 5, store);
+// capacity=5, refillRate=2 tokens/sec, maxCapacity=5
+
+const result = limiter.consume("user-123");
+```
+
+#### Sliding Window vs Token Bucket
+
+| | Sliding Window | Token Bucket |
+|---|---|---|
+| **Stores** | `[ ...timestamps ]` | `{ tokens, lastRefillTime }` |
+| **Memory** | Higher (1 entry/request) | Very low (2 numbers/key) |
+| **Bursts** | Strictly blocked | Allows controlled bursts |
+| **Flexible cost** | ❌ 1 req = 1 count | ✅ Can consume N tokens |
+| **Use when** | Strict accuracy | APIs with varying request costs |
 
 
 

@@ -1,4 +1,4 @@
-import type { TokenBucketStorage } from "../types.js";
+import type { RateLimitResult, TokenBucketStorage } from "../types.js";
 
 export class TokenBucket {
    constructor(
@@ -15,21 +15,30 @@ export class TokenBucket {
       let lastRefillTime = state?.lastRefillTime ?? now;
 
       const timeElapsed = now  - lastRefillTime;
-      const tokensToAdd = Math.floor((timeElapsed * this.refillRate) / 100);
+      const tokensToAdd = Math.floor((timeElapsed * this.refillRate) / 1000);
 
       currentTokens = Math.min(this.capacity, currentTokens + tokensToAdd);
 
       if(currentTokens < amount) {
          const tokensNeeded = amount - currentTokens;
-         const timeToRefill = Math.ceil((tokensNeeded / this.refillRate) * 100);
+         const timeToRefill = Math.ceil((tokensNeeded / this.refillRate) * 1000);
 
-         const ret
+          return {
+            allowed: false,
+            remaining: 0,
+            retryAfterMs:timeToRefill,
+            limit: this.capacity,
+
+         }
       }
+      currentTokens -= amount;
+      this.storage.set(key, {tokens: currentTokens, lastRefillTime: now});
+
 
       
       return {
-         allowed: false,
-         remaining: 0,
+         allowed: true,
+         remaining: currentTokens,
          retryAfterMs: 0,
          limit: this.capacity,
       }
