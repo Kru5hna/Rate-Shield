@@ -1,16 +1,20 @@
-import { TokenBucket } from "../core/tokenBucket.js";
+// import { TokenBucket } from "../core/tokenBucket.js";
 
-import type { TokenBucketStorage } from "../types.js";
+import type { RateLimiter, TokenBucketStorage } from "../types.js";
 
 export interface RateLimitOptions {
-   tokens: number;
-   refillRate: number;
-   capacity: number;
-   storage: TokenBucketStorage;
+   limiter : RateLimiter;
+   keyGenerator?: (req:any) => string;
+   errorMessage?: string;
+   statusCode?:number;
 }
 
 export function rateLimit(opts: RateLimitOptions) {
-   const limiter = new TokenBucket(opts.tokens, opts.refillRate, opts.capacity, opts.storage);
+   // const limiter = new TokenBucket(opts.tokens, opts.refillRate, opts.capacity, opts.storage);
+
+   const key = opts.keyGenerator ? opts.keyGenerator(req) : req.ip;
+
+
    return (req: any, res:any, next:any) => {
       const key = req.ip;
       const result = limiter.consume(key);
@@ -20,11 +24,11 @@ export function rateLimit(opts: RateLimitOptions) {
          res.set("X-RateLimit-Remaining", result.remaining);
          next();
       } else {
-         res.status(429).set({
+        res.status(opts.statusCode || 429).set({
             "X-RateLimit-Limit": result.limit,
             "X-RateLimit-Remaining": 0,
             "Retry-After": Math.ceil(result.retryAfterMs / 1000),
-         }).send("Too Many Requests");
+         }).send(opts.errorMessage || "Too Many Requests");
       }
    }
 }

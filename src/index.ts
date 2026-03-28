@@ -19,3 +19,5 @@ export type {
   LeakyBucketStorage,
   LeakyBucketState,
 } from "./types.js";
+
+export { rateLimit } from "./middleware/express.js";

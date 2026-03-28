@@ -52,3 +52,7 @@ export interface LeakyBucketStorage {
    set(key: string, value: LeakyBucketState): void;
    delete(key: string) : void;
 }
+
+export interface RateLimiter {
+   consume(key: string) : RateLimitResult;
+}
