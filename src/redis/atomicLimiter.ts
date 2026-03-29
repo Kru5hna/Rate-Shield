@@ -1,7 +1,7 @@
 import type {Redis} from "ioredis";
 import type { RateLimitResult } from "../types.js";
 
-export class AtomicRedisLimiter {
+export class FixedWindowRedis {
    constructor(
       private redis: Redis,
       private limit: number,
