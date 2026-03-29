@@ -98,3 +98,61 @@ export class TokenBucketRedis {
       }
    }
 }
+
+export class SlidingWindowRedis {
+   private counter = 0;
+
+   constructor(
+      private redis: Redis,
+      private limit: number,
+      private windowMs: number,
+      private prefix: string = "rl:sliding:"
+   ) {}
+
+   async consume(key: string): Promise<RateLimitResult> {
+      // Unique member ID so each request is a separate sorted set entry
+      const requestId = `${Date.now()}:${this.counter++}`;
+
+      const script = `
+      local limit = tonumber(ARGV[1])
+      local windowMs = tonumber(ARGV[2])
+      local now = tonumber(ARGV[3])
+      local requestId = ARGV[4]
+      local windowStart = now - windowMs
+
+      -- Remove expired timestamps
+      redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", windowStart)
+
+      -- Count requests still in the window
+      local count = redis.call("ZCARD", KEYS[1])
+
+      if count >= limit then
+         local oldest = redis.call("ZRANGE", KEYS[1], 0, 0, "WITHSCORES")
+         local retryMs = 0
+         if #oldest > 0 then
+            retryMs = tonumber(oldest[2]) + windowMs - now
+            if retryMs < 0 then retryMs = 0 end
+         end
+         return {0, 0, retryMs, limit}
+      end
+
+      -- Add this request's timestamp
+      redis.call("ZADD", KEYS[1], now, requestId)
+      redis.call("PEXPIRE", KEYS[1], windowMs)
+
+      return {1, limit - count - 1, 0, limit}
+      `
+
+      const result = await this.redis.eval(
+         script, 1, this.prefix + key,
+         this.limit, this.windowMs, Date.now(), requestId
+      ) as number[];
+
+      return {
+         allowed: result[0] === 1,
+         remaining: result[1]!,
+         retryAfterMs: result[2]!,
+         limit: result[3]!,
+      }
+   }
+}
