@@ -1,16 +1,31 @@
 {
-  "name": "rate-limiter",
+  "name": "rate-shield",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A lightweight, pluggable rate limiter for Node.js using Redis Lua scripts or In-Memory storage.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
-    "dev": "nodemon --watch src --exec ts-node src/index.ts",
+    "dev": "nodemon --watch src --exec tsx src/index.ts",
     "test": "vitest"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./redis": {
+      "import": "./dist/redis/index.js",
+      "types": "./dist/redis/index.d.ts"
+    }
+  },
+  "keywords": ["rate-limiter", "redis", "middleware", "express", "protection", "security"],
+  "author": "Kru5hna",
+  "license": "MIT",
   "type": "module",
   "devDependencies": {
     "@types/express": "^5.0.5",
@@ -18,10 +33,18 @@
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "ioredis": "^5.10.1"
   },
   "dependencies": {
-    "express": "^5.2.1",
-    "ioredis": "^5.10.1"
+    "express": "^5.2.1"
+  },
+  "peerDependencies": {
+    "ioredis": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
   }
 }

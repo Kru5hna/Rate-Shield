@@ -1,8 +1,7 @@
 import express from "express";
 import { Redis } from "ioredis";
 import { rateLimit } from "../src/middleware/express.js";
-import { FixedWindow } from "../src/core/fixedWindow.js";
-import { FixedWindowRedisStore } from "../src/storage/redisStore.js";
+import { FixedWindowRedis } from "../src/redis/atomicLimiter.js";
 
 const app = express();
 const port = 3000;
@@ -23,12 +22,9 @@ redisClient.on("error", (err: any) => {
   );
 });
 
-// 2. Create the Rate Limiter using the Redis Store
-// Allowed: 5 requests per 30 seconds
-const store = new FixedWindowRedisStore(redisClient);
-const apiLimiter = new FixedWindow(5, 30000, store);
+// 5 requests per 30 seconds
+const apiLimiter = new FixedWindowRedis(redisClient, 5, 30000);
 
-// 3. Attach the middleware to all /api routes
 app.use(
   "/api",
   rateLimit({
@@ -39,15 +35,13 @@ app.use(
   }),
 );
 
-// 4. Define the protected route
 app.get("/api/data", (req, res) => {
   res.json({ message: "Success! You hit the Redis-protected route." });
 });
 
-// 5. Start the server
 app.listen(port, () => {
   console.log(`\n🚀 Redis Test server running at http://localhost:${port}`);
-  console.log(`\n------- HOW TO TEST -------`);
+  console.log(`\n HOW TO TEST `);
   console.log(`Make sure you have Redis running in the background!`);
   console.log(
     `If you don't have Redis: You can use Docker: docker run -p 6379:6379 -d redis`,
