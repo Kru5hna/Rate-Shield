@@ -136,7 +136,52 @@ interface Storage {
 }
 ```
 
-> 💡 You can create your own store (e.g., Redis) by implementing this interface.
+> 💡 You can create your own store by implementing this interface.
+
+---
+
+## 🚀 Usage in Express (Middleware)
+
+Rate Shield provides a drop-in middleware for Express.
+
+```typescript
+import express from "express";
+import { rateLimit, FixedWindow, MemoryStore } from "rate-shield";
+
+const app = express();
+
+const limiter = new FixedWindow(5, 60000, new MemoryStore()); // 5 req per min
+
+app.use("/api", rateLimit({
+  limiter: limiter,
+  errorMessage: "Too many requests, slow down!",
+  statusCode: 429,
+  keyGenerator: (req) => req.ip // Rate limit by IP
+}));
+
+app.get("/api/data", (req, res) => res.send("Success!"));
+```
+
+## 🌐 Production ready with Redis
+
+In-memory stores only work for a single server process. For real-world production setups (multiple servers, serverless), Rate Shield provides **Atomic Redis Limiters** powered by Lua scripts, ensuring perfect accuracy with zero race conditions.
+
+```typescript
+import { Redis } from "ioredis";
+import { FixedWindowRedis, rateLimit } from "rate-shield";
+
+// 1. Connect to Redis
+const redis = new Redis("redis://localhost:6379");
+
+// 2. Create the Atomic Redis Limiter 
+// (5 requests, 30 seconds window)
+const limiter = new FixedWindowRedis(redis, 5, 30000);
+
+// 3. Drop it into your route
+app.use("/api", rateLimit({ limiter }));
+```
+
+*Note: Dedicated Redis classes (`FixedWindowRedis`, `TokenBucketRedis`, etc.) handle both storage and atomic lua-script execution.*
 
 ## 🗺️ Roadmap
 
