@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/⚡-Rate_Shield-blueviolet?style=for-the-badge&logoColor=white" alt="Rate Shield" />
 </p>
 
-<h1 align="center">rate-shield</h1>
+<h1 align="center">Rate-Shield</h1>
 
 <p align="center">
   <strong>A lightweight, pluggable rate limiting library for Node.js — built from scratch.</strong>
