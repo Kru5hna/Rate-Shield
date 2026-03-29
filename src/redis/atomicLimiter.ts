@@ -156,3 +156,60 @@ export class SlidingWindowRedis {
       }
    }
 }
+
+export class LeakyBucketRedis {
+   constructor(
+      private redis: Redis,
+      private capacity: number,
+      private leakRate: number,
+      private prefix: string = "rl:leaky:"
+   ) {}
+
+   async consume(key: string, amount: number = 1): Promise<RateLimitResult> {
+      const script = `
+      local capacity = tonumber(ARGV[1])
+      local leakRate = tonumber(ARGV[2])
+      local now = tonumber(ARGV[3])
+      local amount = tonumber(ARGV[4])
+
+      local data = redis.call("GET", KEYS[1])
+      local waterLevel = 0
+      local lastLeakTime = now
+
+      if data then
+         local sep = string.find(data, ":")
+         waterLevel = tonumber(string.sub(data, 1, sep - 1))
+         lastLeakTime = tonumber(string.sub(data, sep + 1))
+      end
+
+      -- Leak water based on elapsed time
+      local elapsed = now - lastLeakTime
+      local leaked = math.floor((elapsed * leakRate) / 1000)
+      waterLevel = math.max(0, waterLevel - leaked)
+
+      -- Check overflow
+      if waterLevel + amount > capacity then
+         local overflow = waterLevel + amount - capacity
+         local retryMs = math.ceil((overflow / leakRate) * 1000)
+         return {0, 0, retryMs, capacity}
+      end
+
+      -- Add water and save
+      waterLevel = waterLevel + amount
+      redis.call("SET", KEYS[1], waterLevel .. ":" .. now)
+      return {1, capacity - waterLevel, 0, capacity}
+      `
+
+      const result = await this.redis.eval(
+         script, 1, this.prefix + key,
+         this.capacity, this.leakRate, Date.now(), amount
+      ) as number[];
+
+      return {
+         allowed: result[0] === 1,
+         remaining: result[1]!,
+         retryAfterMs: result[2]!,
+         limit: result[3]!,
+      }
+   }
+}
