@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/npm/v/rate-shield?style=flat-square&color=blueviolet" />
-  <img src="https://img.shields.io/npm/dm/rate-shield?style=flat-square&color=blue" />
+  <a href="https://www.npmjs.com/package/rate-shield"><img src="https://img.shields.io/npm/v/rate-shield?style=flat-square&color=blueviolet" alt="NPM Version" /></a>
+  <a href="https://www.npmjs.com/package/rate-shield"><img src="https://img.shields.io/npm/dm/rate-shield?style=flat-square&color=blue" alt="NPM Downloads" /></a>
   <img src="https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white" />
   <img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white" />
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" />
