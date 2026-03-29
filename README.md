@@ -2,17 +2,18 @@
   <img src="https://img.shields.io/badge/⚡-Rate_Shield-blueviolet?style=for-the-badge&logoColor=white" alt="Rate Shield" />
 </p>
 
-<h1 align="center">Rate Shield</h1>
+<h1 align="center">rate-shield</h1>
 
 <p align="center">
-  <strong>A lightweight, pluggable rate limiter for Node.js — built from scratch.</strong>
+  <strong>A lightweight, pluggable rate limiting library for Node.js — built from scratch.</strong>
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/npm/v/rate-shield?style=flat-square&color=blueviolet" />
+  <img src="https://img.shields.io/npm/dm/rate-shield?style=flat-square&color=blue" />
   <img src="https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white" />
   <img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white" />
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" />
-  <img src="https://img.shields.io/badge/Status-In_Development-orange?style=flat-square" />
 </p>
 
 <p align="center">
@@ -21,69 +22,43 @@
 
 ---
 
-## 🤔 What is this?
+## Overview
 
-A system that answers one question: **"Should I allow or block this request?"**
+Rate Shield answers one question: **"Should I allow or block this request?"**
 
-Rate Shield protects your APIs from abuse by limiting how many requests a client can make in a given time window. It's built with clean architecture, fully typed in TypeScript, and designed to be extended with multiple algorithms.
+It provides four battle-tested rate limiting algorithms — Fixed Window, Sliding Window, Token Bucket, and Leaky Bucket — each solving the flaws of the last. Start simple with in-memory storage, then scale to Redis with a one-line swap.
 
-```
-  Request → "192.168.1.1"
-      │
-      ▼
-  Do I know this IP? ──No──► Save count=1, ALLOW ✅
-      │
-     Yes
-      │
-      ▼
-  Has their window expired? ──Yes──► Reset count=1, ALLOW ✅
-      │
-      No
-      │
-      ▼
-  Are they over the limit? ──Yes──► BLOCK ❌
-      │
-      No
-      │
-      ▼
-  Increment count, ALLOW ✅
+**Why rate-shield?**
+
+- 🧩 **Pluggable** — swap storage backends without changing algorithm code
+- 🔒 **Atomic Redis support** — Lua-scripted operations, zero race conditions
+- 🪶 **Zero dependencies** (in-memory mode) — drop in anywhere
+- 🏗️ **Fully typed** — written in TypeScript, ships with declarations
+- ⚡ **Express-ready** — drop-in middleware included
+
+---
+
+## Installation
+
+```bash
+npm install rate-shield
 ```
 
-## 🏗️ Architecture
-
-```
-src/
-├── types.ts              ← Interfaces (RateLimitResult, State types, Storage contracts)
-├── storage/
-│   └── memoryStore.ts    ← In-memory Map-based stores (pluggable)
-├── core/
-│   ├── fixedWindow.ts    ← Fixed Window algorithm
-│   ├── slidingWindow.ts  ← Sliding Window algorithm
-│   ├── tokenBucket.ts    ← Token Bucket algorithm
-│   └── leakyBucket.ts    ← Leaky Bucket algorithm
-└── index.ts              ← Barrel exports
+```bash
+# For Redis support
+npm install rate-shield ioredis
 ```
 
-The design is intentionally modular:
+---
 
-| Layer         | Responsibility                                              |
-| ------------- | ----------------------------------------------------------- |
-| **Types**     | Contracts — what data looks like                            |
-| **Storage**   | Persistence — where state is saved (`Map` now, Redis later) |
-| **Algorithm** | Logic — the allow/block decision                            |
-
-## ⚡ Quick Start
+## Quick Start
 
 ```typescript
 import { FixedWindow, MemoryStore } from "rate-shield";
 
-// Create a store (in-memory)
 const store = new MemoryStore();
+const limiter = new FixedWindow(5, 10_000, store); // 5 requests per 10 seconds
 
-// Create a limiter: 5 requests per 10 seconds
-const limiter = new FixedWindow(5, 10_000, store);
-
-// Check if a request should be allowed
 const result = limiter.consume("192.168.1.1");
 
 if (result.allowed) {
@@ -93,40 +68,180 @@ if (result.allowed) {
 }
 ```
 
-## 📦 API Reference
+---
 
-### `FixedWindow`
+## Express Middleware
 
 ```typescript
-new FixedWindow(limit: number, windowMs: number, storage: Storage)
+import express from "express";
+import { rateLimit, FixedWindow, MemoryStore } from "rate-shield";
+
+const app = express();
+
+const limiter = new FixedWindow(100, 60_000, new MemoryStore()); // 100 req/min
+
+app.use("/api", rateLimit({
+  limiter,
+  keyGenerator: (req) => req.ip,  // rate limit by IP
+  statusCode: 429,
+  errorMessage: "Too many requests. Please slow down.",
+}));
+
+app.get("/api/data", (req, res) => res.send("Hello!"));
 ```
 
-| Param      | Type      | Description                           |
-| ---------- | --------- | ------------------------------------- |
-| `limit`    | `number`  | Max requests per window               |
-| `windowMs` | `number`  | Window duration in milliseconds       |
-| `storage`  | `Storage` | Storage backend (e.g., `MemoryStore`) |
+---
 
-#### `.consume(key: string): RateLimitResult`
+## Redis (Production / Multi-Server)
 
-Checks if a request from the given key should be allowed.
+In-memory stores work for a single process. For distributed setups (multiple servers, serverless), use the atomic Redis limiters powered by Lua scripts — no race conditions, no double-counting.
+
+```typescript
+import { Redis } from "ioredis";
+import { FixedWindowRedis, rateLimit } from "rate-shield";
+
+const redis = new Redis("redis://localhost:6379");
+const limiter = new FixedWindowRedis(redis, 100, 60_000); // 100 req/min
+
+app.use("/api", rateLimit({ limiter }));
+```
+
+Available Redis limiters: `FixedWindowRedis`, `SlidingWindowRedis`, `TokenBucketRedis`, `LeakyBucketRedis`
+
+---
+
+## High Availability (Circuit Breaker)
+
+Network partitions happen. If your Redis server goes down, `rate-shield` won't crash your API. Wrap your Redis limiter in a `FallbackLimiter` to automatically route traffic to local memory until Redis recovers. 
+
+It features **fail-open defaults**, **timeout controls**, and a **state-machine Circuit Breaker** to prevent retry-storms.
+
+```typescript
+import { FallbackLimiter, FixedWindow, MemoryStore } from "rate-shield";
+import { FixedWindowRedis } from "rate-shield/redis";
+
+const redisLimiter = new FixedWindowRedis(redis, 100, 60_000);
+const memoryLimiter = new FixedWindow(100, 60_000, new MemoryStore());
+
+const haLimiter = new FallbackLimiter(redisLimiter, memoryLimiter, {
+  timeoutMs: 50,                // Fallback if Redis takes >50ms
+  circuitBreakerErrors: 3,      // Trip circuit after 3 fails
+  circuitBreakerCooldownMs: 10_000, // Wait 10s before retrying Redis
+  onError: (err, isTripped) => console.error(`Redis failed. Tripped: ${isTripped}`)
+});
+
+app.use("/api", rateLimit({ limiter: haLimiter }));
+```
+
+---
+
+## Algorithms
+
+Each algorithm solves a flaw in the previous one. Pick based on your use case.
+
+| Algorithm | Memory | Bursts | Best for |
+|---|---|---|---|
+| **Fixed Window** | Very low | ⚠️ Boundary burst possible | Simple APIs, low-traffic routes |
+| **Sliding Window** | Medium (1 entry/req) | ✅ No burst | Accuracy-critical endpoints |
+| **Token Bucket** | Very low | ✅ Controlled burst | APIs with variable request costs |
+| **Leaky Bucket** | Very low | ❌ Strictly smooth | Constant throughput (queues, streams) |
+
+### Fixed Window
+
+Divides time into fixed windows. Counter resets at the boundary.
+
+```typescript
+import { FixedWindow, MemoryStore } from "rate-shield";
+
+const limiter = new FixedWindow(
+  5,             // limit: max requests per window
+  10_000,        // windowMs: window size in milliseconds
+  new MemoryStore()
+);
+
+const result = limiter.consume("user-123");
+```
+
+> ⚠️ **Note:** Clients can make 2× the allowed requests by hitting the boundary of two consecutive windows. Use Sliding Window if this matters.
+
+### Sliding Window
+
+Stores individual request timestamps. The window moves with time — no boundary burst.
+
+```typescript
+import { SlidingWindow, SlidingWindowMemoryStore } from "rate-shield";
+
+const limiter = new SlidingWindow(
+  5,             // limit
+  10_000,        // windowMs
+  new SlidingWindowMemoryStore()
+);
+
+const result = limiter.consume("user-123");
+```
+
+### Token Bucket
+
+A bucket fills with tokens at a constant rate. Each request consumes one. Allows controlled bursts up to the bucket capacity. Tokens are refilled **lazily** — no background timers.
+
+```typescript
+import { TokenBucket, TokenBucketMemoryStore } from "rate-shield";
+
+const limiter = new TokenBucket(
+  5,             // capacity: max tokens (burst size)
+  2,             // refillRate: tokens added per second
+  5,             // maxCapacity
+  new TokenBucketMemoryStore()
+);
+
+const result = limiter.consume("user-123");
+```
+
+### Leaky Bucket
+
+Requests fill a bucket that leaks at a constant rate. Enforces perfectly smooth output — no bursts allowed.
+
+```typescript
+import { LeakyBucket, LeakyBucketMemoryStore } from "rate-shield";
+
+const limiter = new LeakyBucket(
+  5,             // capacity: max queue depth
+  2,             // leakRate: requests drained per second
+  new LeakyBucketMemoryStore()
+);
+
+const result = limiter.consume("user-123");
+```
+
+---
+
+## API Reference
+
+### `RateLimitResult`
+
+All `.consume()` calls return:
 
 ```typescript
 interface RateLimitResult {
-  allowed: boolean; // allow or block?
-  remaining: number; // requests left in this window
-  retryAfterMs: number; // ms to wait (0 if allowed)
-  limit: number; // the configured max
+  allowed: boolean;       // true = allow, false = block
+  remaining: number;      // requests remaining in this window
+  retryAfterMs: number;   // milliseconds to wait before retrying (0 if allowed)
+  limit: number;          // the configured max
 }
 ```
 
-### `MemoryStore`
+### `rateLimit(options)` — Express Middleware
 
-```typescript
-new MemoryStore();
-```
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `limiter` | `Limiter` | **required** | Any rate limiter instance |
+| `keyGenerator` | `(req) => string` | `req.ip` | Identifies the client |
+| `statusCode` | `number` | `429` | HTTP status when blocked |
+| `errorMessage` | `string` | `"Too Many Requests"` | Response body when blocked |
 
-In-memory storage using a `Map`. Implements the `Storage` interface:
+### Custom Storage
+
+Implement the `Storage` interface to plug in any backend (Redis, Postgres, etc.):
 
 ```typescript
 interface Storage {
@@ -136,244 +251,39 @@ interface Storage {
 }
 ```
 
-> 💡 You can create your own store by implementing this interface.
+---
+
+## Architecture
+
+```
+src/
+├── types.ts              ← Interfaces & shared contracts
+├── storage/
+│   └── memoryStore.ts    ← In-memory Map-based stores
+├── core/
+│   ├── fixedWindow.ts    ← Fixed Window algorithm
+│   ├── slidingWindow.ts  ← Sliding Window algorithm
+│   ├── tokenBucket.ts    ← Token Bucket algorithm
+│   ├── leakyBucket.ts    ← Leaky Bucket algorithm
+│   └── fallbackLimiter.ts← Circuit breaker / Failover wrapper
+├── redis/
+│   ├── index.ts          ← Subpath exporter ('rate-shield/redis')
+│   └── atomicLimiter.ts  ← Lua scripts for Redis atomic ops
+└── index.ts              ← Barrel exports
+```
+
+| Layer | Responsibility |
+|---|---|
+| **Types** | Contracts — what data looks like |
+| **Storage** | Persistence — where state lives (`Map` or Redis) |
+| **Algorithm** | Logic — the allow/block decision |
+| **Resilience**| `FallbackLimiter` keeps APIs online during network crashes |
+
+Algorithms are fully decoupled from storage. Swap `MemoryStore` for an atomic Redis store without touching core algorithm code.
 
 ---
 
-## 🚀 Usage in Express (Middleware)
-
-Rate Shield provides a drop-in middleware for Express.
-
-```typescript
-import express from "express";
-import { rateLimit, FixedWindow, MemoryStore } from "rate-shield";
-
-const app = express();
-
-const limiter = new FixedWindow(5, 60000, new MemoryStore()); // 5 req per min
-
-app.use("/api", rateLimit({
-  limiter: limiter,
-  errorMessage: "Too many requests, slow down!",
-  statusCode: 429,
-  keyGenerator: (req) => req.ip // Rate limit by IP
-}));
-
-app.get("/api/data", (req, res) => res.send("Success!"));
-```
-
-## 🌐 Production ready with Redis
-
-In-memory stores only work for a single server process. For real-world production setups (multiple servers, serverless), Rate Shield provides **Atomic Redis Limiters** powered by Lua scripts, ensuring perfect accuracy with zero race conditions.
-
-```typescript
-import { Redis } from "ioredis";
-import { FixedWindowRedis, rateLimit } from "rate-shield";
-
-// 1. Connect to Redis
-const redis = new Redis("redis://localhost:6379");
-
-// 2. Create the Atomic Redis Limiter 
-// (5 requests, 30 seconds window)
-const limiter = new FixedWindowRedis(redis, 5, 30000);
-
-// 3. Drop it into your route
-app.use("/api", rateLimit({ limiter }));
-```
-
-*Note: Dedicated Redis classes (`FixedWindowRedis`, `TokenBucketRedis`, etc.) handle both storage and atomic lua-script execution.*
-
-## 🗺️ Roadmap
-
-- [x] **Fixed Window** — simple counting per time window
-- [x] **Sliding Window** — tracks individual timestamps, no boundary burst
-- [x] **Token Bucket** — smooth rate limiting with lazy token refill
-- [x] **Leaky Bucket** — constant drain rate, smooth output
-- [ ] **Express Middleware** — drop-in `app.use(rateLimit({...}))`
-- [ ] **Redis Store** — distributed rate limiting across servers
-- [ ] **Analytics** — request metrics & dashboard
-
-## 🧠 Algorithm Deep Dive
-
-Each algorithm solves a flaw in the previous one:
-
-```
-Fixed Window ──► has boundary burst problem
-      │
-Sliding Window ──► fixes it by tracking individual timestamps
-      │
-Token Bucket ──► smoother, allows controlled bursts ✅
-      │
-Leaky Bucket ──► constant drain rate, like a queue ✅
-```
-
----
-
-### 1. Fixed Window ✅
-
-Divides time into fixed windows. Counter resets when window expires.
-
-```
-Window: 12:00 – 12:59  (limit: 5)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  12:05 → req #1  ✅ remaining: 4
-  12:10 → req #2  ✅ remaining: 3
-  12:30 → req #3  ✅ remaining: 2
-  12:45 → req #4  ✅ remaining: 1
-  12:50 → req #5  ✅ remaining: 0
-  12:55 → req #6  ❌ BLOCKED
-
-Window: 1:00 – 1:59  ← counter resets!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  1:05  → req #1  ✅ remaining: 4 (fresh!)
-```
-
-#### ⚠️ The Boundary Burst Problem
-
-**Double the traffic can pass at window edges:**
-
-```
-Limit: 5 req/min
-
-Window 1 (12:00–12:59)       Window 2 (1:00–1:59)
-━━━━━━━━━━━━━━━━━━━━━        ━━━━━━━━━━━━━━━━━━━━
-  12:55 → req #1 ✅           1:00 → req #1 ✅
-  12:56 → req #2 ✅           1:01 → req #2 ✅
-  12:57 → req #3 ✅           1:02 → req #3 ✅
-  12:58 → req #4 ✅           1:03 → req #4 ✅
-  12:59 → req #5 ✅           1:04 → req #5 ✅
-
-= 10 requests in ~10 seconds! (limit was 5/min) 😱
-```
-
-Counter resets exactly at the boundary → user exploits the gap.
-
----
-
-### 2. Sliding Window ✅
-
-Instead of a counter, **store the timestamp of every request** and count how many fall within the last `windowMs` from *right now*.
-
-```
-Limit: 5 req per 60 seconds
-Current time: 1:02:30
-
-Stored timestamps for "192.168.1.1":
-  [ 1:01:50, 1:01:55, 1:02:00, 1:02:10, 1:02:20 ]
-
-Sliding window = last 60s = 1:01:30 → 1:02:30
-  1:01:50 ✅ inside
-  1:01:55 ✅ inside
-  1:02:00 ✅ inside
-  1:02:10 ✅ inside
-  1:02:20 ✅ inside
-Count = 5 → ❌ BLOCKED
-
-Later at 1:02:51 →
-  1:01:50 slides OUT (older than 60s)
-  Count = 4 → ✅ ALLOWED
-```
-
-**No boundary burst!** Window moves with time, not fixed to clock edges.
-
-#### Fixed Window vs Sliding Window
-
-| | Fixed Window | Sliding Window |
-|---|---|---|
-| **Stores** | `{ count, windowStart }` | `[ timestamp, timestamp, ... ]` |
-| **Resets** | At boundary | Never — old timestamps slide out |
-| **Boundary burst** | ⚠️ 2x traffic possible | ✅ No |
-| **Memory** | Low (2 numbers/key) | Higher (1 timestamp/request) |
-| **Use when** | Simplicity is enough | Accuracy matters |
-
----
-
-### 3. Token Bucket ✅
-
-A bucket holds tokens that **refill at a constant rate**. Each request consumes a token. If the bucket is empty, the request is denied. Tokens are refilled **lazily** — no timers needed.
-
-```
-Capacity: 5 tokens, Refill: 2 tokens/sec
-
-t=0s    🪣 [🟢🟢🟢🟢🟢]  bucket starts full
-  req → consume 1 → 4 left  ✅
-  req → consume 1 → 3 left  ✅
-  req → consume 1 → 2 left  ✅
-  req → consume 1 → 1 left  ✅
-  req → consume 1 → 0 left  ✅
-  req → 0 tokens   → ❌ BLOCKED (retry in 500ms)
-
-t=3s    refill: min(5, 0 + floor(3s × 2)) = 5 tokens
-  req → consume 1 → 4 left  ✅
-```
-
-**Key insight:** Tokens are calculated on-demand using elapsed time — no background timer.
-
-```typescript
-import { TokenBucket, TokenBucketMemoryStore } from "rate-shield";
-
-const store = new TokenBucketMemoryStore();
-const limiter = new TokenBucket(5, 2, 5, store);
-// capacity=5, refillRate=2 tokens/sec, maxCapacity=5
-
-const result = limiter.consume("user-123");
-```
-
-#### Sliding Window vs Token Bucket
-
-| | Sliding Window | Token Bucket |
-|---|---|---|
-| **Stores** | `[ ...timestamps ]` | `{ tokens, lastRefillTime }` |
-| **Memory** | Higher (1 entry/request) | Very low (2 numbers/key) |
-| **Bursts** | Strictly blocked | Allows controlled bursts |
-| **Flexible cost** | ❌ 1 req = 1 count | ✅ Can consume N tokens |
-| **Use when** | Strict accuracy | APIs with varying request costs |
-
----
-
-### 4. Leaky Bucket ✅
-
-Requests fill a bucket that **leaks at a constant rate**. If the bucket overflows, new requests are rejected. This enforces a **perfectly smooth** output rate.
-
-```
-Capacity: 5, Leak Rate: 2 req/sec
-
-t=0s    🪣 water=0 (empty)
-  req → 0+1=1 ≤ 5?  ✅  water=1
-  req → 1+1=2 ≤ 5?  ✅  water=2
-  req → 2+1=3 ≤ 5?  ✅  water=3
-  req → 3+1=4 ≤ 5?  ✅  water=4
-  req → 4+1=5 ≤ 5?  ✅  water=5
-  req → 5+1=6 > 5?  ❌  BLOCKED
-
-t=3s    leaked = 3s × 2 = 6, water = max(0, 5-6) = 0
-  req → 0+1=1 ≤ 5?  ✅  water=1
-```
-
-```typescript
-import { LeakyBucket, LeakyBucketMemoryStore } from "rate-shield";
-
-const store = new LeakyBucketMemoryStore();
-const limiter = new LeakyBucket(5, 2, store);
-// capacity=5, leakRate=2 req/sec
-
-const result = limiter.consume("user-123");
-```
-
-#### Token Bucket vs Leaky Bucket
-
-| | Token Bucket | Leaky Bucket |
-|---|---|---|
-| **Bucket starts** | Full (tokens) | Empty (no water) |
-| **Request** | Removes a token | Adds water |
-| **Over time** | Tokens refill | Water leaks out |
-| **Denied when** | Bucket empty | Bucket full |
-| **Bursts** | ✅ Allows controlled bursts | ❌ Strictly smooth output |
-| **Use when** | Flexible APIs | Need constant throughput |
-
-
-
-## 🛠️ Development
+## Development
 
 ```bash
 # Install dependencies
@@ -384,14 +294,21 @@ npm run dev
 
 # Build for production
 npm run build
+
+# Run tests
+npm test
 ```
 
-## 📄 License
+---
+
+
+
+## License
 
 MIT © [Kru5hna](https://github.com/Kru5hna)
 
 ---
 
 <p align="center">
-  <sub>Built with 💜 as a learning project — understanding rate limiting from the ground up.</sub>
+  <sub>Built with 💜 - understanding rate limiting from the ground up.</sub>
 </p>
